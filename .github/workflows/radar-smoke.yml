@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/radar-smoke.yml'
+      - 'app/api/cron/radar/route.ts'
 jobs:
   smoke:
     runs-on: ubuntu-latest
