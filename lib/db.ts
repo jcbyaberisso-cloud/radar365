@@ -1,22 +1,6 @@
 import { neon } from '@neondatabase/serverless';
-
-function db() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error('DATABASE_URL is not configured');
-  return neon(url);
-}
-
-export async function saveScan(input:{startedAt:string;sport:string;event:any;bookmakers:number;bet365Available:boolean;prices:number}) {
-  const sql=db();
-  const rows=await sql`INSERT INTO radar_scans(started_at,sport,event_id,home_team,away_team,commence_time,bookmakers_count,bet365_available,prices_count)
-    VALUES(${input.startedAt},${input.sport},${input.event?.id?String(input.event.id):null},${input.event?.home_team??null},${input.event?.away_team??null},${input.event?.commence_time??null},${input.bookmakers},${input.bet365Available},${input.prices}) RETURNING id`;
-  return Number(rows[0].id);
-}
-
-export async function saveOpportunity(scanId:number,sport:string,event:any,o:any){
-  const sql=db();
-  await sql`INSERT INTO radar_opportunities(scan_id,fixture_id,sport,event_id,home_team,away_team,commence_time,player,market,outcome,line,bookmaker,decimal_odds,model_probability,fair_odds,edge,status,sample_size,lineup_confirmed,confirmed_starter,unavailable)
-  VALUES(${scanId},${o.fixtureId??null},${sport},${String(event.id)},${event.home_team??''},${event.away_team??''},${event.commence_time??null},${o.player??null},${o.market},${o.outcome??null},${o.line??null},${o.bookmaker??null},${o.decimalOdds},${o.estimate?.probability??null},${o.decision?.fairOdds??null},${o.decision?.edge??null},${o.decision?.status??'DESCARTAR'},${o.sampleSize??0},${Boolean(o.lineupConfirmed)},${Boolean(o.confirmedStarter)},${Boolean(o.unavailable)}) ON CONFLICT DO NOTHING`;
-}
-
-export async function recentOpportunities(limit=50){const sql=db();return sql`SELECT * FROM radar_opportunities ORDER BY captured_at DESC LIMIT ${limit}`;}
+function db(){const url=process.env.DATABASE_URL;if(!url)throw new Error('DATABASE_URL is not configured');return neon(url)}
+export async function saveScan(input:{startedAt:string;sport:string;event:any;bookmakers:number;bet365Available:boolean;prices:number}){const sql=db();const rows=await sql`INSERT INTO radar_scans(started_at,sport,event_id,home_team,away_team,commence_time,bookmakers_count,bet365_available,prices_count) VALUES(${input.startedAt},${input.sport},${input.event?.id?String(input.event.id):null},${input.event?.home_team??null},${input.event?.away_team??null},${input.event?.commence_time??null},${input.bookmakers},${input.bet365Available},${input.prices}) RETURNING id`;return Number(rows[0].id)}
+export async function saveOpportunity(scanId:number,sport:string,event:any,o:any){const sql=db();await sql`INSERT INTO radar_opportunities(scan_id,fixture_id,sport,event_id,home_team,away_team,commence_time,player,market,outcome,line,bookmaker,decimal_odds,model_probability,fair_odds,edge,status,sample_size,lineup_confirmed,confirmed_starter,unavailable) VALUES(${scanId},${o.fixtureId??null},${sport},${String(event.id)},${event.home_team??''},${event.away_team??''},${event.commence_time??null},${o.player??null},${o.market},${o.outcome??null},${o.line??null},${o.bookmaker??null},${o.decimalOdds},${o.estimate?.probability??null},${o.decision?.fairOdds??null},${o.decision?.edge??null},${o.decision?.status??'DESCARTAR'},${o.sampleSize??0},${Boolean(o.lineupConfirmed)},${Boolean(o.confirmedStarter)},${Boolean(o.unavailable)}) ON CONFLICT DO NOTHING`}
+export async function recentOpportunities(limit=50){const sql=db();return sql`SELECT * FROM radar_opportunities ORDER BY captured_at DESC LIMIT ${limit}`}
+export async function radarSummary(){const sql=db();const rows=await sql`SELECT (SELECT count(*)::int FROM radar_scans) AS scans,(SELECT count(*)::int FROM radar_opportunities) AS opportunities,(SELECT max(finished_at) FROM radar_scans) AS last_scan,(SELECT max(captured_at) FROM radar_opportunities) AS last_opportunity,(SELECT count(*)::int FROM radar_opportunities WHERE status='VERDE') AS green,(SELECT count(*)::int FROM radar_opportunities WHERE status='AMARILLO') AS yellow,(SELECT count(*)::int FROM radar_opportunities WHERE result='PENDING') AS pending`;return rows[0]??{scans:0,opportunities:0,last_scan:null,last_opportunity:null,green:0,yellow:0,pending:0}}
