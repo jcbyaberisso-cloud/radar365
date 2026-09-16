@@ -1,0 +1,9 @@
+{
+  "name": "Radar 365",
+  "short_name": "Radar365",
+  "description": "Radar autónomo de oportunidades de fútbol",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b10",
+  "theme_color": "#090b10"
+}
