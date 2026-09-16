@@ -1,0 +1,19 @@
+name: Radar 365 Scheduler
+
+on:
+  schedule:
+    # 10:00, 13:00, 16:00 y 19:00 Argentina (UTC-3)
+    - cron: '0 13,16,19,22 * * *'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Radar scan
+        run: |
+          set -e
+          curl --fail --show-error --silent --max-time 300 \
+            --retry 2 --retry-delay 15 \
+            https://radar365-two.vercel.app/api/cron/radar
