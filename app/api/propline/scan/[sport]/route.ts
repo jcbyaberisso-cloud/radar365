@@ -10,6 +10,7 @@ const TARGET_MARKETS = new Set([
   'player_goals',
   'player_assists',
   'team_total',
+  'total_corners',
   'totals',
   'h2h',
   'spreads'
@@ -18,13 +19,25 @@ const TARGET_MARKETS = new Set([
 type Event = { id: string | number; home_team?: string; away_team?: string; commence_time?: string };
 type Market = { key: string; outcomes_count?: number };
 
-export async function GET(_request: NextRequest, context: { params: Promise<{ sport: string }> }) {
+function eventTime(event: Event) {
+  const value = event.commence_time ? Date.parse(event.commence_time) : Number.NaN;
+  return Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+}
+
+export async function GET(request: NextRequest, context: { params: Promise<{ sport: string }> }) {
   const { sport } = await context.params;
   if (!sport.startsWith('soccer_')) return NextResponse.json({ ok: false, error: 'Soccer sport key required' }, { status: 400 });
 
+  const limitParam = Number(request.nextUrl.searchParams.get('limit') || '12');
+  const limit = Math.max(1, Math.min(Number.isFinite(limitParam) ? Math.floor(limitParam) : 12, 20));
+
   try {
     const events = await propLineRequest<Event[]>(`/sports/${encodeURIComponent(sport)}/events`);
-    const upcoming = events.slice(0, 12);
+    const now = Date.now();
+    const future = events
+      .filter(event => eventTime(event) >= now - 2 * 60 * 60 * 1000)
+      .sort((a, b) => eventTime(a) - eventTime(b));
+    const upcoming = future.slice(0, limit);
     const discovered = [];
 
     for (const event of upcoming) {
@@ -33,7 +46,16 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ sp
       if (relevant.length) discovered.push({ event, markets: relevant });
     }
 
-    return NextResponse.json({ ok: true, sport, eventsChecked: upcoming.length, eventsWithRelevantMarkets: discovered.length, events: discovered });
+    return NextResponse.json({
+      ok: true,
+      sport,
+      providerEvents: events.length,
+      futureEvents: future.length,
+      eventsChecked: upcoming.length,
+      nearestEvent: upcoming[0]?.commence_time ?? null,
+      eventsWithRelevantMarkets: discovered.length,
+      events: discovered
+    });
   } catch (error) {
     return NextResponse.json({ ok: false, sport, error: error instanceof Error ? error.message : 'Unknown error' }, { status: 503 });
   }
