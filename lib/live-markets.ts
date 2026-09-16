@@ -1,98 +1,29 @@
 import { propLineRequest } from './propline';
 
-const MARKETS = ['player_shots', 'player_shots_on_target', 'goalie_saves'];
+export const RADAR_MARKETS = [
+  'player_shots','player_shots_on_target','goalie_saves','total_corners','team_corners','corners_spread',
+  'totals','h2h','spreads','anytime_goal_scorer','2plus_goals','goal_or_assist','player_cards','team_cards'
+];
 
-export type RadarPrice = {
-  sport: string;
-  eventId: string;
-  home: string;
-  away: string;
-  commenceTime: string;
-  bookmaker: string;
-  bookmakerKey: string;
-  market: string;
-  player: string;
-  outcome: string;
-  line: number | null;
-  decimalOdds: number;
-};
+export type RadarPrice={sport:string;eventId:string;home:string;away:string;commenceTime:string;bookmaker:string;bookmakerKey:string;market:string;player:string;outcome:string;line:number|null;decimalOdds:number};
+type Event={id:string|number;home_team?:string;away_team?:string;commence_time?:string};
+type Outcome={name?:string;description?:string;price?:number;point?:number};
+type Market={key?:string;outcomes?:Outcome[]}; type Bookmaker={key?:string;title?:string;markets?:Market[]}; type OddsEvent=Event&{bookmakers?:Bookmaker[]};
+function eventTime(e:Event){const p=e.commence_time?Date.parse(e.commence_time):NaN;return Number.isFinite(p)?p:Number.MAX_SAFE_INTEGER}
+function americanToDecimal(p?:number){if(typeof p!=='number'||p===0)return null;return Number((p>0?1+p/100:1+100/Math.abs(p)).toFixed(2))}
+function inferLine(o:Outcome){if(typeof o.point==='number')return o.point;const m=o.name?.match(/(\d+(?:\.\d+)?)\s*\+/);return m?Number(m[1]):null}
+function clean(v?:string){if(!v)return'';if(!/[ÃÂ]/.test(v))return v;try{return Buffer.from(v,'latin1').toString('utf8')}catch{return v}}
 
-type Event = { id: string | number; home_team?: string; away_team?: string; commence_time?: string };
-type Outcome = { name?: string; description?: string; price?: number; point?: number };
-type Market = { key?: string; outcomes?: Outcome[] };
-type Bookmaker = { key?: string; title?: string; markets?: Market[] };
-type OddsEvent = Event & { bookmakers?: Bookmaker[] };
-
-function eventTime(event: Event) {
-  const parsed = event.commence_time ? Date.parse(event.commence_time) : NaN;
-  return Number.isFinite(parsed) ? parsed : Number.MAX_SAFE_INTEGER;
-}
-
-function americanToDecimal(price?: number) {
-  if (typeof price !== 'number' || price === 0) return null;
-  return Number((price > 0 ? 1 + price / 100 : 1 + 100 / Math.abs(price)).toFixed(2));
-}
-
-function inferLine(outcome: Outcome) {
-  if (typeof outcome.point === 'number') return outcome.point;
-  const match = outcome.name?.match(/(\d+(?:\.\d+)?)\s*\+/);
-  return match ? Number(match[1]) : null;
-}
-
-function cleanName(value?: string) {
-  if (!value) return '';
-  if (!/[ÃÂ]/.test(value)) return value;
-  try { return Buffer.from(value, 'latin1').toString('utf8'); } catch { return value; }
-}
-
-export async function getNearestMarketPrices(sport: string, maxPrices = 8) {
-  const events = await propLineRequest<Event[]>(`/sports/${encodeURIComponent(sport)}/events`);
-  const now = Date.now();
-  const event = events
-    .filter(item => eventTime(item) >= now - 2 * 60 * 60 * 1000)
-    .sort((a, b) => eventTime(a) - eventTime(b))[0];
-
-  if (!event) return { event: null, bookmakers: [], bet365Available: false, prices: [] as RadarPrice[] };
-
-  const query = new URLSearchParams({ eventIds: String(event.id), markets: MARKETS.join(',') });
-  const raw = await propLineRequest<OddsEvent[] | OddsEvent>(`/sports/${encodeURIComponent(sport)}/odds?${query.toString()}`);
-  const oddsEvents = Array.isArray(raw) ? raw : [raw];
-  const priced = oddsEvents.find(item => String(item.id) === String(event.id)) ?? oddsEvents[0];
-  const bookmakers = (priced?.bookmakers ?? []).map(b => ({ key: b.key ?? '', title: b.title ?? b.key ?? 'Unknown' }));
-  const bet365Available = bookmakers.some(b => /bet\s*365/i.test(`${b.key} ${b.title}`));
-
-  const all: RadarPrice[] = (priced?.bookmakers ?? []).flatMap(bookmaker =>
-    (bookmaker.markets ?? []).filter(m => m.key && MARKETS.includes(m.key)).flatMap(market =>
-      (market.outcomes ?? []).map(outcome => {
-        const decimalOdds = americanToDecimal(outcome.price);
-        return decimalOdds ? {
-          sport,
-          eventId: String(event.id),
-          home: event.home_team ?? '',
-          away: event.away_team ?? '',
-          commenceTime: event.commence_time ?? '',
-          bookmaker: bookmaker.title ?? bookmaker.key ?? 'Unknown',
-          bookmakerKey: bookmaker.key ?? '',
-          market: market.key ?? '',
-          player: cleanName(outcome.description ?? outcome.name),
-          outcome: cleanName(outcome.name),
-          line: inferLine(outcome),
-          decimalOdds
-        } : null;
-      }).filter((value): value is RadarPrice => Boolean(value))
-    )
-  );
-
-  // Keep a useful spread of markets instead of dumping hundreds of near-duplicate prices.
-  const selected: RadarPrice[] = [];
-  const seen = new Set<string>();
-  for (const price of all.sort((a, b) => b.decimalOdds - a.decimalOdds)) {
-    const key = `${price.market}|${price.player}|${price.outcome}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push(price);
-    if (selected.length >= maxPrices) break;
-  }
-
-  return { event, bookmakers, bet365Available, prices: selected };
+export async function getNearestMarketPrices(sport:string,maxPrices=18){
+ const events=await propLineRequest<Event[]>(`/sports/${encodeURIComponent(sport)}/events`); const now=Date.now();
+ const event=events.filter(e=>eventTime(e)>=now-7200000).sort((a,b)=>eventTime(a)-eventTime(b))[0];
+ if(!event)return{event:null,bookmakers:[],bet365Available:false,prices:[] as RadarPrice[]};
+ const query=new URLSearchParams({eventIds:String(event.id),markets:RADAR_MARKETS.join(',')});
+ const raw=await propLineRequest<OddsEvent[]|OddsEvent>(`/sports/${encodeURIComponent(sport)}/odds?${query}`); const arr=Array.isArray(raw)?raw:[raw]; const priced=arr.find(x=>String(x.id)===String(event.id))??arr[0];
+ const bookmakers=(priced?.bookmakers??[]).map(b=>({key:b.key??'',title:b.title??b.key??'Unknown'})); const bet365Available=bookmakers.some(b=>/bet\s*365/i.test(`${b.key} ${b.title}`));
+ const all:RadarPrice[]=(priced?.bookmakers??[]).flatMap(b=>(b.markets??[]).filter(m=>m.key&&RADAR_MARKETS.includes(m.key)).flatMap(m=>(m.outcomes??[]).map(o=>{const d=americanToDecimal(o.price);return d?{sport,eventId:String(event.id),home:event.home_team??'',away:event.away_team??'',commenceTime:event.commence_time??'',bookmaker:b.title??b.key??'Unknown',bookmakerKey:b.key??'',market:m.key??'',player:clean(o.description??o.name),outcome:clean(o.name),line:inferLine(o),decimalOdds:d}:null}).filter((v):v is RadarPrice=>Boolean(v))));
+ const priority=['player_shots_on_target','player_shots','goalie_saves','total_corners','team_corners','totals','anytime_goal_scorer','goal_or_assist','player_cards','spreads','h2h'];
+ const selected:RadarPrice[]=[]; const seen=new Set<string>();
+ for(const market of priority){for(const p of all.filter(x=>x.market===market).sort((a,b)=>b.decimalOdds-a.decimalOdds)){const k=`${p.market}|${p.player}|${p.outcome}`;if(seen.has(k))continue;seen.add(k);selected.push(p);if(selected.filter(x=>x.market===market).length>=2||selected.length>=maxPrices)break}if(selected.length>=maxPrices)break}
+ return{event,bookmakers,bet365Available,prices:selected};
 }
