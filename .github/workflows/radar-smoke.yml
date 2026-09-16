@@ -1,0 +1,23 @@
+name: Radar Production Smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/radar-smoke.yml'
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for production deployment
+        run: sleep 75
+      - name: Health check
+        run: |
+          set -e
+          curl --fail --show-error --silent --retry 3 --retry-delay 10 https://radar365-two.vercel.app/api/health | tee health.json
+          grep -q '"database":true' health.json
+      - name: Exercise Neon write path
+        run: |
+          set -e
+          curl --fail --show-error --silent --retry 3 --retry-delay 10 https://radar365-two.vercel.app/api/cron/ping | tee ping.json
+          grep -q '"ok":true' ping.json
