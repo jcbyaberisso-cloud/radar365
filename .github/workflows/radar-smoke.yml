@@ -16,8 +16,15 @@ jobs:
           set -e
           curl --fail --show-error --silent --retry 3 --retry-delay 10 https://radar365-two.vercel.app/api/health | tee health.json
           grep -q '"database":true' health.json
-      - name: Exercise Neon write path
+          grep -q '"footballApi":true' health.json
+          grep -q '"propLine":true' health.json
+      - name: Run complete Radar scan
         run: |
           set -e
-          curl --fail --show-error --silent --retry 3 --retry-delay 10 https://radar365-two.vercel.app/api/cron/ping | tee ping.json
-          grep -q '"ok":true' ping.json
+          curl --fail --show-error --silent --max-time 300 --retry 1 https://radar365-two.vercel.app/api/cron/radar | tee radar.json
+          grep -q '"ok":true' radar.json
+      - name: Verify persistence after scan
+        run: |
+          set -e
+          curl --fail --show-error --silent https://radar365-two.vercel.app/api/health | tee after.json
+          grep -q '"hasCompletedScan":true' after.json
