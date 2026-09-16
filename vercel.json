@@ -3,6 +3,7 @@
     {"path":"/api/cron/radar","schedule":"0 13 * * *"},
     {"path":"/api/cron/radar","schedule":"0 16 * * *"},
     {"path":"/api/cron/radar","schedule":"0 19 * * *"},
-    {"path":"/api/cron/radar","schedule":"0 22 * * *"}
+    {"path":"/api/cron/radar","schedule":"0 22 * * *"},
+    {"path":"/api/cron/settle","schedule":"30 3 * * *"}
   ]
 }
