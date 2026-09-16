@@ -1,17 +1,10 @@
 name: Radar Production Smoke
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/radar-smoke.yml'
-      - 'app/api/cron/radar/route.ts'
 jobs:
   smoke:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for production deployment
-        run: sleep 75
       - name: Health check
         run: |
           set -e
