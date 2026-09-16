@@ -1,11 +1,4 @@
 import { NextResponse } from 'next/server';
-import { recentOpportunities } from '../../../lib/db';
-
+import { radarSummary } from '../../../lib/db';
 export const dynamic='force-dynamic';
-
-export async function GET(){
- const checks={database:false,footballApi:Boolean(process.env.FOOTBALL_API_KEY),propLine:Boolean(process.env.PROPLINE_API_KEY),cronConfigured:true};
- let stored=0;let databaseError:string|null=null;
- try{const rows=await recentOpportunities(1);checks.database=true;stored=rows.length;}catch(error){databaseError=error instanceof Error?error.message:'Database check failed';}
- return NextResponse.json({ok:checks.database&&checks.footballApi&&checks.propLine,service:'Radar 365',checks,storedOpportunityProbe:stored,databaseError,checkedAt:new Date().toISOString()},{status:checks.database?200:503});
-}
+export async function GET(){const checks={database:false,footballApi:Boolean(process.env.FOOTBALL_API_KEY),propLine:Boolean(process.env.PROPLINE_API_KEY)};let summary:any=null,databaseError:string|null=null;try{summary=await radarSummary();checks.database=true}catch(error){databaseError=error instanceof Error?error.message:'Database check failed'}const configured=checks.database&&checks.footballApi&&checks.propLine;const hasRun=Boolean(summary?.last_scan);return NextResponse.json({ok:configured,service:'Radar 365',checks,autonomy:{configured,hasCompletedScan:hasRun,state:!configured?'MISCONFIGURED':hasRun?'RUNNING':'WAITING_FIRST_SCAN'},summary,databaseError,checkedAt:new Date().toISOString()},{status:checks.database?200:503})}
