@@ -11,9 +11,16 @@ export type EstimateInput = {
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
 function factorial(k: number) { let v = 1; for (let i = 2; i <= k; i++) v *= i; return v; }
 function poissonCdf(k: number, lambda: number) {
+  if (k < 0) return 0;
   let total = 0;
-  for (let i = 0; i <= Math.max(0, k); i++) total += Math.exp(-lambda) * Math.pow(lambda, i) / factorial(i);
+  for (let i = 0; i <= k; i++) total += Math.exp(-lambda) * Math.pow(lambda, i) / factorial(i);
   return clamp(total, 0, 1);
+}
+
+// PropLine can expose an integer threshold as "2+" (meaning X >= 2)
+// or a bookmaker line such as 1.5 (Over 1.5 also means X >= 2).
+export function requiredCount(line: number) {
+  return Number.isInteger(line) ? line : Math.floor(line) + 1;
 }
 
 export function estimateOverProbability(input: EstimateInput) {
@@ -31,11 +38,11 @@ export function estimateOverProbability(input: EstimateInput) {
   const rawMean = weighted / weights;
   const minutesFactor = clamp((input.expectedMinutes ?? 90) / 90, 0.35, 1.05);
   const lambda = clamp(rawMean * (input.opponentFactor ?? 1) * (input.homeAwayFactor ?? 1) * minutesFactor, 0.05, 12);
-  const threshold = Math.floor(input.line);
-  const probability = clamp(1 - poissonCdf(threshold, lambda), 0.02, 0.98);
+  const needed = Math.max(1, requiredCount(input.line));
+  const probability = clamp(1 - poissonCdf(needed - 1, lambda), 0.02, 0.98);
   const confidence = usable.length >= 8 && input.lineupConfirmed ? 'ALTA' : usable.length >= 5 ? 'MEDIA' : 'BAJA';
 
-  return { probability, lambda, sampleSize: usable.length, rawMean, confidence };
+  return { probability, lambda, sampleSize: usable.length, rawMean, requiredCount: needed, confidence };
 }
 
 export function valueDecision(probability: number | null, decimalOdds: number | null, lineupConfirmed = false) {
