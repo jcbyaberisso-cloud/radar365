@@ -6,27 +6,15 @@ export async function getRecentTeamFixtures(teamId:number,last=10){return footba
 export type FixturePlayer={player:{id:number;name:string};statistics:Array<{games?:{minutes?:number|null;position?:string};shots?:{total?:number|null;on?:number|null};goals?:{total?:number|null;assists?:number|null;saves?:number|null};cards?:{yellow?:number|null;red?:number|null}}>};
 export type FixturePlayersTeam={team:{id:number;name:string};players:FixturePlayer[]};
 export async function getFixturePlayers(fixtureId:number){return footballRequest<{response:FixturePlayersTeam[];errors:unknown}>(`/fixtures/players?fixture=${fixtureId}`,86400)}
-const norm=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const norm=(s:string)=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+function samePlayer(a:string,b:string){const x=norm(a),y=norm(b);if(!x||!y)return false;if(x===y)return true;const xa=x.split(' '),ya=y.split(' '),xs=xa.at(-1),ys=ya.at(-1);if(!xs||!ys||xs.length<4||xs!==ys)return false;const xi=xa[0]?.[0],yi=ya[0]?.[0];return !xi||!yi||xi===yi}
 export type PlayerSampleMarket='player_shots'|'player_shots_on_target'|'goalie_saves'|'player_cards'|'anytime_goal_scorer'|'goal_or_assist';
 export type HistoricalPlayerRequest={playerName:string;market:PlayerSampleMarket};
 export type HistoricalSample={value:number;minutes?:number};
-
 function playerValue(s:FixturePlayer['statistics'][number],market:PlayerSampleMarket){if(market==='player_shots')return s.shots?.total;if(market==='player_shots_on_target')return s.shots?.on;if(market==='goalie_saves')return s.goals?.saves;if(market==='player_cards')return(s.cards?.yellow??0)+(s.cards?.red??0);if(market==='anytime_goal_scorer')return(s.goals?.total??0)>0?1:0;return((s.goals?.total??0)+(s.goals?.assists??0))>0?1:0}
 function sampleKey(playerName:string,market:PlayerSampleMarket){return `${norm(playerName)}|${market}`}
-
-// One fixtures request + one cached fixture/player request per historical match serves every
-// requested player/market for the team. This avoids repeating the same API calls per prop.
-export async function getHistoricalPlayerSamplesBatch(teamId:number,requests:HistoricalPlayerRequest[],last=6){
- const unique=[...new Map(requests.map(r=>[sampleKey(r.playerName,r.market),r])).values()];
- const result:Record<string,HistoricalSample[]>={};for(const r of unique)result[sampleKey(r.playerName,r.market)]=[];
- if(!unique.length)return result;
- const fixtures=await getRecentTeamFixtures(teamId,last);const batches=await Promise.all((fixtures.response??[]).map(f=>getFixturePlayers(f.fixture.id)));
- for(const batch of batches){const team=batch.response?.find(t=>t.team.id===teamId);if(!team)continue;for(const r of unique){const target=norm(r.playerName);const found=team.players?.find(p=>{const n=norm(p.player.name);return n.includes(target)||target.includes(n)});const s=found?.statistics?.[0];if(!s)continue;const value=playerValue(s,r.market);if(typeof value==='number')result[sampleKey(r.playerName,r.market)].push({value,minutes:s.games?.minutes??undefined})}}
- return result;
-}
+export async function getHistoricalPlayerSamplesBatch(teamId:number,requests:HistoricalPlayerRequest[],last=6){const unique=[...new Map(requests.map(r=>[sampleKey(r.playerName,r.market),r])).values()];const result:Record<string,HistoricalSample[]>={};for(const r of unique)result[sampleKey(r.playerName,r.market)]=[];if(!unique.length)return result;const fixtures=await getRecentTeamFixtures(teamId,last);const batches=await Promise.all((fixtures.response??[]).map(f=>getFixturePlayers(f.fixture.id)));for(const batch of batches){const team=batch.response?.find(t=>t.team.id===teamId);if(!team)continue;for(const r of unique){const found=team.players?.find(p=>samePlayer(p.player.name,r.playerName));const s=found?.statistics?.[0];if(!s)continue;const value=playerValue(s,r.market);if(typeof value==='number')result[sampleKey(r.playerName,r.market)].push({value,minutes:s.games?.minutes??undefined})}}return result}
 export function samplesFromBatch(batch:Record<string,HistoricalSample[]>,playerName:string,market:PlayerSampleMarket){return batch[sampleKey(playerName,market)]??[]}
 export async function getHistoricalPlayerSamples(teamId:number,playerName:string,market:PlayerSampleMarket,last=8){const batch=await getHistoricalPlayerSamplesBatch(teamId,[{playerName,market}],last);return samplesFromBatch(batch,playerName,market)}
-
-type TeamStats={team?:{id?:number};statistics?:Array<{type?:string;value?:number|string|null}>};
-function statValue(stats:TeamStats[],teamId:number,label:string){const row=stats.find(x=>x.team?.id===teamId)?.statistics?.find(x=>x.type===label)?.value;if(typeof row==='number')return row;if(typeof row==='string'){const n=Number(row.replace('%',''));return Number.isFinite(n)?n:null}return null}
-export async function getHistoricalTeamSamples(teamId:number,market:'corners'|'goals',last=6){const fixtures=await getRecentTeamFixtures(teamId,last);const out:number[]=[];for(const f of fixtures.response??[]){if(market==='goals'){const isHome=f.teams.home.id===teamId;const v=isHome?f.goals?.home:f.goals?.away;if(typeof v==='number')out.push(v)}else{const raw=await footballRequest<{response:TeamStats[]}>(`/fixtures/statistics?fixture=${f.fixture.id}`,86400);const v=statValue(raw.response??[],teamId,'Corner Kicks');if(typeof v==='number')out.push(v)}}return out.map(value=>({value,minutes:90}))}
+type TeamStats={team?:{id?:number};statistics?:Array<{type?:string;value?:number|string|null}>};function statValue(stats:TeamStats[],teamId:number,label:string){const row=stats.find(x=>x.team?.id===teamId)?.statistics?.find(x=>x.type===label)?.value;if(typeof row==='number')return row;if(typeof row==='string'){const n=Number(row.replace('%',''));return Number.isFinite(n)?n:null}return null}
+export async function getHistoricalTeamSamples(teamId:number,market:'corners'|'goals',last=6){const fixtures=await getRecentTeamFixtures(teamId,last);const out:number[]=[];for(const f of fixtures.response??[]){if(market==='goals'){const isHome=f.teams.home.id===teamId,v=isHome?f.goals?.home:f.goals?.away;if(typeof v==='number')out.push(v)}else{const raw=await footballRequest<{response:TeamStats[]}>(`/fixtures/statistics?fixture=${f.fixture.id}`,86400);const v=statValue(raw.response??[],teamId,'Corner Kicks');if(typeof v==='number')out.push(v)}}return out.map(value=>({value,minutes:90}))}
